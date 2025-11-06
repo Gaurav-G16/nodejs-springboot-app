@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import com.example.userapp.exception.DatabaseUnavailableException;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -56,6 +57,10 @@ public class UserRestController {
             LOGGER.warn("User registration failed: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(Map.of("error", e.getMessage()));
+        } catch (DatabaseUnavailableException e) {
+            LOGGER.warn("Database unavailable during registration: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of("error", "Database is unavailable"));
         } catch (Exception e) {
             LOGGER.error("Unexpected error during user registration", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -70,8 +75,13 @@ public class UserRestController {
      */
     @GetMapping
     public ResponseEntity<List<User>> getAllUsers() {
-        final List<User> users = userService.getAllUsers();
-        return ResponseEntity.ok(users);
+        try {
+            final List<User> users = userService.getAllUsers();
+            return ResponseEntity.ok(users);
+        } catch (DatabaseUnavailableException e) {
+            LOGGER.warn("Database unavailable when fetching users: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();
+        }
     }
 
     /**
@@ -82,12 +92,18 @@ public class UserRestController {
      */
     @GetMapping("/{id}")
     public ResponseEntity<?> getUserById(@PathVariable final Long id) {
-        final Optional<User> user = userService.findById(id);
-        if (user.isPresent()) {
-            return ResponseEntity.ok(user.get());
-        } else {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of("error", "User not found with ID: " + id));
+        try {
+            final Optional<User> user = userService.findById(id);
+            if (user.isPresent()) {
+                return ResponseEntity.ok(user.get());
+            } else {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(Map.of("error", "User not found with ID: " + id));
+            }
+        } catch (DatabaseUnavailableException e) {
+            LOGGER.warn("Database unavailable when looking up user {}: {}", id, e.getMessage());
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of("error", "Database is unavailable"));
         }
     }
 
@@ -99,12 +115,18 @@ public class UserRestController {
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteUser(@PathVariable final Long id) {
-        final boolean deleted = userService.deleteUser(id);
-        if (deleted) {
-            return ResponseEntity.ok(Map.of("message", "User deleted successfully"));
-        } else {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of("error", "User not found with ID: " + id));
+        try {
+            final boolean deleted = userService.deleteUser(id);
+            if (deleted) {
+                return ResponseEntity.ok(Map.of("message", "User deleted successfully"));
+            } else {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(Map.of("error", "User not found with ID: " + id));
+            }
+        } catch (DatabaseUnavailableException e) {
+            LOGGER.warn("Database unavailable when deleting user {}: {}", id, e.getMessage());
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of("error", "Database is unavailable"));
         }
     }
 
@@ -115,10 +137,16 @@ public class UserRestController {
      */
     @GetMapping("/stats")
     public ResponseEntity<Map<String, Object>> getUserStats() {
-        final long totalUsers = userService.getTotalUserCount();
-        return ResponseEntity.ok(Map.of(
-                "totalUsers", totalUsers,
-                "timestamp", System.currentTimeMillis()
-        ));
+        try {
+            final long totalUsers = userService.getTotalUserCount();
+            return ResponseEntity.ok(Map.of(
+                    "totalUsers", totalUsers,
+                    "timestamp", System.currentTimeMillis()
+            ));
+        } catch (DatabaseUnavailableException e) {
+            LOGGER.warn("Database unavailable when fetching stats: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of("error", "Database is unavailable"));
+        }
     }
 }

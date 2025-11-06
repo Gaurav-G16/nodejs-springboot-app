@@ -9,6 +9,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import com.example.userapp.config.DatabaseAvailability;
+import static org.mockito.Mockito.when;
 
 import java.util.Arrays;
 import java.util.List;
@@ -29,6 +31,9 @@ class UserServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private DatabaseAvailability databaseAvailability;
+
     private Counter userRegistrationCounter;
     private UserService userService;
 
@@ -37,7 +42,8 @@ class UserServiceTest {
         userRegistrationCounter = Counter.builder("user.registrations")
                 .description("Number of user registrations")
                 .register(new SimpleMeterRegistry());
-        userService = new UserService(userRepository, userRegistrationCounter);
+        when(databaseAvailability.isDatabaseUp()).thenReturn(true);
+        userService = new UserService(userRepository, userRegistrationCounter, databaseAvailability);
     }
 
     @Test

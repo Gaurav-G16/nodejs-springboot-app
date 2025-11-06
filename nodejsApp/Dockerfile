@@ -21,8 +21,10 @@ WORKDIR /app
 # Copy dependencies from builder stage
 COPY --from=builder /app/node_modules ./node_modules
 
-# Copy application code
+# Copy application code and assets
 COPY --chown=nodejs:nodejs src/ ./src/
+COPY --chown=nodejs:nodejs views/ ./views/
+COPY --chown=nodejs:nodejs public/ ./public/
 
 # Switch to non-root user
 USER nodejs

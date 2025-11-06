@@ -1,10 +1,12 @@
-require('./telemetry')
+// Initialize OpenTelemetry first
+const { sdk, logger } = require('./telemetry')
+sdk.start()
 
 const express = require('express')
 const { MongoClient } = require('mongodb')
 const client = require('prom-client')
-const winston = require('winston')
 const path = require('path')
+const os = require('os')
 
 class UserApp {
   constructor () {
@@ -13,11 +15,13 @@ class UserApp {
     this.mongoUrl = this.buildMongoUrl()
     this.mongoClient = null
     this.db = null
+    this.dbConnected = false
 
     this.setupLogger()
     this.setupMetrics()
     this.setupMiddleware()
     this.setupRoutes()
+    this.connectToDatabase() // Non-blocking connection attempt
   }
 
   buildMongoUrl () {
@@ -30,16 +34,7 @@ class UserApp {
   }
 
   setupLogger () {
-    this.logger = winston.createLogger({
-      level: 'info',
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.json()
-      ),
-      transports: [
-        new winston.transports.Console()
-      ]
-    })
+    this.logger = logger
   }
 
   setupMetrics () {
@@ -57,6 +52,18 @@ class UserApp {
       name: 'http_request_duration_seconds',
       help: 'HTTP request duration in seconds',
       labelNames: ['method', 'route'],
+      registers: [this.register]
+    })
+
+    this.userRegistrations = new client.Counter({
+      name: 'user_registrations_total',
+      help: 'Total user registrations',
+      registers: [this.register]
+    })
+
+    this.dbConnectionStatus = new client.Gauge({
+      name: 'database_connection_status',
+      help: 'Database connection status (1=connected, 0=disconnected)',
       registers: [this.register]
     })
   }
@@ -99,8 +106,14 @@ class UserApp {
   }
 
   setupRoutes () {
-    this.app.get('/health', (req, res) => {
-      res.json({ status: 'healthy', timestamp: new Date().toISOString() })
+    this.app.get('/health', async (req, res) => {
+      await this.checkDatabaseConnection()
+      const healthStatus = this.dbConnected ? 'healthy' : 'degraded'
+      res.json({
+        status: healthStatus,
+        timestamp: new Date().toISOString(),
+        database: this.dbConnected ? 'connected' : 'disconnected'
+      })
     })
 
     this.app.get('/metrics', async (req, res) => {
@@ -108,8 +121,64 @@ class UserApp {
       res.end(await this.register.metrics())
     })
 
-    this.app.get('/', (req, res) => {
-      res.render('register')
+    this.app.get('/', async (req, res) => {
+      // Use cached status instead of checking every time for root page
+      res.render('register', { dbStatus: this.dbConnected })
+    })
+
+    // Dashboard route
+    this.app.get('/dashboard', async (req, res) => {
+      try {
+        await this.checkDatabaseConnection()
+
+        const systemInfo = {
+          platform: os.platform(),
+          arch: os.arch(),
+          nodeVersion: process.version,
+          uptime: Math.floor(process.uptime()),
+          memory: process.memoryUsage(),
+          cpus: os.cpus().length
+        }
+
+        const dbInfo = {
+          type: 'MongoDB',
+          status: this.dbConnected ? 'Connected' : 'Disconnected',
+          url: this.mongoUrl.replace(/\/\/.*@/, '//***:***@') // Hide credentials
+        }
+
+        const apis = [
+          { method: 'GET', path: '/', description: 'Registration form' },
+          { method: 'POST', path: '/register', description: 'Register new user' },
+          { method: 'GET', path: '/users', description: 'List all users' },
+          { method: 'GET', path: '/health', description: 'Health check' },
+          { method: 'GET', path: '/metrics', description: 'Prometheus metrics' },
+          { method: 'GET', path: '/dashboard', description: 'System dashboard' }
+        ]
+
+        // Check if request wants HTML or JSON
+        if (req.headers.accept && req.headers.accept.includes('text/html')) {
+          res.render('dashboard', {
+            service: 'Node.js User Service',
+            version: '1.0.0',
+            system: systemInfo,
+            database: dbInfo,
+            apis,
+            timestamp: new Date().toISOString()
+          })
+        } else {
+          res.json({
+            service: 'Node.js User Service',
+            version: '1.0.0',
+            timestamp: new Date().toISOString(),
+            system: systemInfo,
+            database: dbInfo,
+            apis
+          })
+        }
+      } catch (error) {
+        this.logger.error('Dashboard error', { error: error.message })
+        res.status(500).json({ error: 'Dashboard temporarily unavailable' })
+      }
     })
 
     this.app.post('/register', async (req, res) => {
@@ -119,9 +188,14 @@ class UserApp {
           return res.status(400).json({ error: 'Name and email are required' })
         }
 
+        if (!this.dbConnected) {
+          return res.status(503).json({ error: 'Database unavailable. Please try again later.' })
+        }
+
         const user = { name, email, createdAt: new Date() }
         const result = await this.db.collection('users').insertOne(user)
 
+        this.userRegistrations.inc()
         this.logger.info('User registered', { userId: result.insertedId, name, email })
         res.json({ success: true, userId: result.insertedId })
       } catch (error) {
@@ -132,11 +206,52 @@ class UserApp {
 
     this.app.get('/users', async (req, res) => {
       try {
+        if (!this.dbConnected) {
+          // Check if request wants HTML or JSON
+          if (req.headers.accept && req.headers.accept.includes('text/html')) {
+            return res.render('users', { users: [], dbConnected: false, error: 'Database unavailable' })
+          }
+          return res.status(503).json({ error: 'Database unavailable. Please try again later.' })
+        }
+
         const users = await this.db.collection('users').find({}).toArray()
-        res.json(users)
+
+        // Check if request wants HTML or JSON
+        if (req.headers.accept && req.headers.accept.includes('text/html')) {
+          res.render('users', { users, dbConnected: true, error: null })
+        } else {
+          res.json(users)
+        }
       } catch (error) {
         this.logger.error('Failed to fetch users', { error: error.message })
-        res.status(500).json({ error: 'Failed to fetch users' })
+        if (req.headers.accept && req.headers.accept.includes('text/html')) {
+          res.render('users', { users: [], dbConnected: false, error: 'Failed to fetch users' })
+        } else {
+          res.status(500).json({ error: 'Failed to fetch users' })
+        }
+      }
+    })
+
+    this.app.delete('/users/:id', async (req, res) => {
+      try {
+        if (!this.dbConnected) {
+          return res.status(503).json({ error: 'Database unavailable. Please try again later.' })
+        }
+
+        const { id } = req.params
+        const { ObjectId } = require('mongodb')
+
+        const result = await this.db.collection('users').deleteOne({ _id: new ObjectId(id) })
+
+        if (result.deletedCount === 1) {
+          this.logger.info('User deleted', { userId: id })
+          res.json({ success: true, message: 'User deleted successfully' })
+        } else {
+          res.status(404).json({ error: 'User not found' })
+        }
+      } catch (error) {
+        this.logger.error('Failed to delete user', { error: error.message, userId: req.params.id })
+        res.status(500).json({ error: 'Failed to delete user' })
       }
     })
   }
@@ -145,28 +260,66 @@ class UserApp {
     try {
       this.mongoClient = new MongoClient(this.mongoUrl)
       await this.mongoClient.connect()
+      await this.mongoClient.db().admin().ping() // Test connection
       this.db = this.mongoClient.db()
+      this.dbConnected = true
+      this.dbConnectionStatus.set(1)
       this.logger.info('Connected to MongoDB')
     } catch (error) {
-      this.logger.error('MongoDB connection failed', { error: error.message })
-      throw error
+      this.dbConnected = false
+      this.dbConnectionStatus.set(0)
+      this.logger.warn('MongoDB connection failed - app will continue without database', { error: error.message })
     }
+  }
+
+  async checkDatabaseConnection () {
+    try {
+      if (this.mongoClient) {
+        // Set a short timeout for the ping
+        const timeoutPromise = new Promise((resolve, reject) =>
+          setTimeout(() => reject(new Error('Connection timeout')), 2000)
+        )
+
+        await Promise.race([
+          this.mongoClient.db().admin().ping(),
+          timeoutPromise
+        ])
+
+        if (!this.dbConnected) {
+          this.dbConnected = true
+          this.dbConnectionStatus.set(1)
+          this.logger.info('Database connection restored')
+        }
+      } else {
+        throw new Error('No MongoDB client')
+      }
+    } catch (error) {
+      if (this.dbConnected) {
+        this.dbConnected = false
+        this.dbConnectionStatus.set(0)
+        this.logger.warn('Database connection lost', { error: error.message })
+      }
+    }
+    return this.dbConnected
   }
 
   async start () {
-    try {
-      await this.connectToDatabase()
-      this.server = this.app.listen(this.port, () => {
-        this.logger.info(`Server running on port ${this.port}`)
-      })
-      return this.server
-    } catch (error) {
-      this.logger.error('Failed to start server', { error: error.message })
-      throw error
-    }
+    this.server = this.app.listen(this.port, () => {
+      this.logger.info(`Server running on port ${this.port}`)
+    })
+
+    // Start periodic database health check (every 10 seconds)
+    this.healthCheckInterval = setInterval(() => {
+      this.checkDatabaseConnection()
+    }, 10000)
+
+    return this.server
   }
 
   async stop () {
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval)
+    }
     if (this.mongoClient) {
       await this.mongoClient.close()
     }
@@ -179,7 +332,7 @@ class UserApp {
 if (require.main === module) {
   const app = new UserApp()
   app.start().catch(err => {
-    console.error('Failed to start application:', err)
+    app.logger.error('Failed to start application:', err)
     process.exit(1)
   })
 }

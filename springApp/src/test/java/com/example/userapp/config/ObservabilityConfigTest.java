@@ -14,14 +14,14 @@ class ObservabilityConfigTest {
     void testUserRegistrationCounter() {
         MeterRegistry meterRegistry = new SimpleMeterRegistry();
         ObservabilityConfig config = new ObservabilityConfig();
-        
+
         Counter counter = config.userRegistrationCounter(meterRegistry);
-        
+
         assertNotNull(counter);
         assertEquals("user_registrations_total", counter.getId().getName());
         assertEquals("Total number of user registrations", counter.getId().getDescription());
         assertEquals(0.0, counter.count());
-        
+
         counter.increment();
         assertEquals(1.0, counter.count());
     }

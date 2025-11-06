@@ -10,9 +10,17 @@ pids
 *.seed
 *.pid.lock
 
-# Coverage directory used by tools like istanbul
+# Testing and Coverage
 coverage/
 .nyc_output
+jest-coverage/
+test-results/
+junit.xml
+
+# Reports
+reports/
+build-reports/
+security-reports/
 
 # Grunt intermediate storage
 .grunt
@@ -69,10 +77,6 @@ jspm_packages/
 # DynamoDB Local files
 .dynamodb/
 
-# Reports
-reports/
-build-reports/
-
 # IDE
 .vscode/
 .idea/
@@ -90,3 +94,10 @@ logs
 # Cypress
 cypress/videos/
 cypress/screenshots/
+
+# SonarQube
+.sonarqube/
+.scannerwork/
+
+# Docker
+.dockerignore

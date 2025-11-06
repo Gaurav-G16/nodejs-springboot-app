@@ -203,6 +203,23 @@ mvn test
 mvn verify
 ```
 
+## Database availability behavior
+
+This application is resilient to the database being temporarily unreachable. Changes made:
+
+- Hikari configuration (`spring.datasource.hikari.initialization-fail-timeout=-1`) prevents the app from failing to start if the database is down.
+- A `DatabaseAvailability` component performs a quick connection check and is used by the service and controllers.
+- The web UI (`/`) will display a banner when the database is down and operate in read-only mode (no registrations).
+- The `/health` view reflects whether the database is reachable. Actuator `/actuator/health` will still include the datasource health details.
+
+How to test:
+
+1. Start the app without starting Postgres. The application should come up.
+2. Visit `/actuator/health` to see the datasource reported as DOWN.
+3. Visit `/health` (web view) or `/` to see the UI indicate database unavailability.
+4. Start Postgres and verify the UI and actuator health change to UP.
+
+
 ### Pipeline Execution
 ```bash
 # Full pipeline

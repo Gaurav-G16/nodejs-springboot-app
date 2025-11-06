@@ -19,7 +19,6 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -46,12 +45,12 @@ class UserRestControllerTest {
 
         // When & Then
         mockMvc.perform(post("/api/users")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(user)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(1L))
-                .andExpect(jsonPath("$.name").value("John Doe"))
-                .andExpect(jsonPath("$.email").value("john@example.com"));
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(user)))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.id").value(1L))
+            .andExpect(jsonPath("$.name").value("John Doe"))
+            .andExpect(jsonPath("$.email").value("john@example.com"));
     }
 
     @Test
@@ -59,14 +58,14 @@ class UserRestControllerTest {
         // Given
         final User user = new User("John Doe", "john@example.com");
         when(userService.registerUser(any(User.class)))
-                .thenThrow(new IllegalArgumentException("User with email john@example.com already exists"));
+            .thenThrow(new IllegalArgumentException("User with email john@example.com already exists"));
 
         // When & Then
         mockMvc.perform(post("/api/users")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(user)))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error").value("User with email john@example.com already exists"));
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(user)))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.error").value("User with email john@example.com already exists"));
     }
 
     @Test
@@ -76,26 +75,26 @@ class UserRestControllerTest {
 
         // When & Then
         mockMvc.perform(post("/api/users")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(user)))
-                .andExpect(status().isBadRequest());
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(user)))
+            .andExpect(status().isBadRequest());
     }
 
     @Test
     void testGetAllUsers() throws Exception {
         // Given
         final List<User> users = Arrays.asList(
-                new User("John Doe", "john@example.com"),
-                new User("Jane Smith", "jane@example.com")
+            new User("John Doe", "john@example.com"),
+            new User("Jane Smith", "jane@example.com")
         );
         when(userService.getAllUsers()).thenReturn(users);
 
         // When & Then
         mockMvc.perform(get("/api/users"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(2))
-                .andExpect(jsonPath("$[0].name").value("John Doe"))
-                .andExpect(jsonPath("$[1].name").value("Jane Smith"));
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.length()").value(2))
+            .andExpect(jsonPath("$[0].name").value("John Doe"))
+            .andExpect(jsonPath("$[1].name").value("Jane Smith"));
     }
 
     @Test
@@ -107,10 +106,10 @@ class UserRestControllerTest {
 
         // When & Then
         mockMvc.perform(get("/api/users/1"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(1L))
-                .andExpect(jsonPath("$.name").value("John Doe"))
-                .andExpect(jsonPath("$.email").value("john@example.com"));
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(1L))
+            .andExpect(jsonPath("$.name").value("John Doe"))
+            .andExpect(jsonPath("$.email").value("john@example.com"));
     }
 
     @Test
@@ -120,8 +119,8 @@ class UserRestControllerTest {
 
         // When & Then
         mockMvc.perform(get("/api/users/1"))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("User not found with ID: 1"));
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.error").value("User not found with ID: 1"));
     }
 
     @Test
@@ -131,8 +130,8 @@ class UserRestControllerTest {
 
         // When & Then
         mockMvc.perform(delete("/api/users/1"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("User deleted successfully"));
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.message").value("User deleted successfully"));
     }
 
     @Test
@@ -142,8 +141,8 @@ class UserRestControllerTest {
 
         // When & Then
         mockMvc.perform(delete("/api/users/1"))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error").value("User not found with ID: 1"));
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.error").value("User not found with ID: 1"));
     }
 
     @Test
@@ -153,8 +152,8 @@ class UserRestControllerTest {
 
         // When & Then
         mockMvc.perform(get("/api/users/stats"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalUsers").value(5L))
-                .andExpect(jsonPath("$.timestamp").exists());
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.totalUsers").value(5L))
+            .andExpect(jsonPath("$.timestamp").exists());
     }
 }

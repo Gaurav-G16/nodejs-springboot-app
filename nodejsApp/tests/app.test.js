@@ -1,185 +1,203 @@
 const request = require('supertest')
 const UserApp = require('../src/app')
 
+// Mock MongoDB completely
+jest.mock('mongodb', () => ({
+  MongoClient: jest.fn().mockImplementation(() => ({
+    connect: jest.fn().mockResolvedValue(),
+    db: jest.fn().mockReturnValue({
+      admin: () => ({ ping: jest.fn().mockResolvedValue() }),
+      collection: () => ({
+        insertOne: jest.fn().mockResolvedValue({ insertedId: 'test-id-123' }),
+        find: () => ({
+          toArray: jest.fn().mockResolvedValue([
+            { _id: 'test-id-123', name: 'Test User', email: 'test@example.com' }
+          ])
+        }),
+        deleteOne: jest.fn().mockResolvedValue({ deletedCount: 1 })
+      })
+    }),
+    close: jest.fn().mockResolvedValue()
+  }))
+}))
+
 describe('UserApp', () => {
   let app
   let server
 
   beforeAll(async () => {
-    // Use test database
     process.env.MONGO_DB = 'userapp_test'
     process.env.MONGO_HOST = 'localhost'
+    process.env.NODE_ENV = 'test'
+    process.env.PORT = '0' // Use random port for tests
+  })
 
+  beforeEach(() => {
     app = new UserApp()
-
-    // Mock MongoDB for unit tests
-    const mockDb = {
-      collection: jest.fn().mockReturnValue({
-        insertOne: jest.fn().mockResolvedValue({ insertedId: 'test-id' }),
-        find: jest.fn().mockReturnValue({
-          toArray: jest.fn().mockResolvedValue([
-            { _id: 'test-id', name: 'Test User', email: 'test@example.com' }
-          ])
-        })
-      })
-    }
-
-    app.db = mockDb
+    app.dbConnected = true // Default to connected
     server = app.app
   })
 
-  afterAll(async () => {
+  afterEach(async () => {
     if (app) {
-      await app.stop()
+      if (app.healthCheckInterval) {
+        clearInterval(app.healthCheckInterval)
+        app.healthCheckInterval = null
+      }
+      if (app.server && app.server.close) {
+        await new Promise(resolve => app.server.close(resolve))
+      }
+      if (app.mongoClient && app.mongoClient.close) {
+        await app.mongoClient.close()
+      }
     }
   })
 
-  describe('Health endpoint', () => {
-    it('should return healthy status', async () => {
-      const response = await request(server)
-        .get('/health')
-        .expect(200)
-
+  describe('API Endpoints', () => {
+    it('should return health status when database connected', async () => {
+      app.dbConnected = true
+      const response = await request(server).get('/health').expect(200)
       expect(response.body).toHaveProperty('status', 'healthy')
-      expect(response.body).toHaveProperty('timestamp')
+      expect(response.body).toHaveProperty('database', 'connected')
     })
-  })
 
-  describe('Metrics endpoint', () => {
-    it('should return prometheus metrics', async () => {
-      const response = await request(server)
-        .get('/metrics')
-        .expect(200)
-
+    it('should return metrics', async () => {
+      const response = await request(server).get('/metrics').expect(200)
       expect(response.text).toContain('# HELP')
-      expect(response.headers['content-type']).toContain('text/plain')
+      expect(response.text).toContain('http_requests_total')
     })
-  })
 
-  describe('User registration', () => {
-    it('should register a new user', async () => {
-      const userData = {
-        name: 'John Doe',
-        email: 'john@example.com'
-      }
+    it('should return dashboard info as JSON', async () => {
+      const response = await request(server)
+        .get('/dashboard')
+        .set('Accept', 'application/json')
+        .expect(200)
+      expect(response.body).toHaveProperty('service', 'Node.js User Service')
+      expect(response.body).toHaveProperty('apis')
+      expect(response.body.apis).toHaveLength(6)
+    })
 
+    it('should render dashboard HTML page', async () => {
+      const response = await request(server)
+        .get('/dashboard')
+        .set('Accept', 'text/html')
+        .expect(200)
+      expect(response.text).toContain('System Dashboard')
+    })
+
+    it('should render registration page', async () => {
+      const response = await request(server).get('/').expect(200)
+      expect(response.text).toContain('Node.js User Service')
+      expect(response.text).toContain('Register User')
+    })
+
+    it('should register user when database connected', async () => {
+      app.dbConnected = true
       const response = await request(server)
         .post('/register')
-        .send(userData)
+        .send({ name: 'John Doe', email: 'john@example.com' })
         .expect(200)
-
       expect(response.body).toHaveProperty('success', true)
-      expect(response.body).toHaveProperty('userId')
+      expect(response.body).toHaveProperty('userId', 'test-id-123')
     })
 
-    it('should return error for missing name', async () => {
-      const userData = {
-        email: 'john@example.com'
-      }
-
+    it('should validate required fields', async () => {
       const response = await request(server)
         .post('/register')
-        .send(userData)
+        .send({ name: 'John Doe' })
         .expect(400)
-
       expect(response.body).toHaveProperty('error', 'Name and email are required')
     })
 
-    it('should return error for missing email', async () => {
-      const userData = {
-        name: 'John Doe'
-      }
-
+    it('should handle database unavailable during registration', async () => {
+      app.dbConnected = false
       const response = await request(server)
         .post('/register')
-        .send(userData)
-        .expect(400)
-
-      expect(response.body).toHaveProperty('error', 'Name and email are required')
+        .send({ name: 'Test', email: 'test@example.com' })
+        .expect(503)
+      expect(response.body).toHaveProperty('error', 'Database unavailable. Please try again later.')
     })
-  })
 
-  describe('Users endpoint', () => {
-    it('should return list of users', async () => {
+    it('should return users list when database connected', async () => {
+      app.dbConnected = true
       const response = await request(server)
         .get('/users')
+        .set('Accept', 'application/json')
         .expect(200)
-
       expect(Array.isArray(response.body)).toBe(true)
-      expect(response.body.length).toBeGreaterThan(0)
-    })
-  })
-
-  describe('Root endpoint', () => {
-    it('should attempt to render registration page', async () => {
-      const response = await request(server)
-        .get('/')
-
-      // Accept either success or error since view rendering might fail in test environment
-      expect([200, 500]).toContain(response.status)
-    })
-  })
-
-  describe('UserApp class methods', () => {
-    it('should build mongo URL correctly', () => {
-      const testApp = new UserApp()
-      const url = testApp.buildMongoUrl()
-      expect(url).toContain('mongodb://')
-      expect(url).toContain('userapp_test')
+      expect(response.body).toHaveLength(1)
+      expect(response.body[0]).toHaveProperty('name', 'Test User')
     })
 
-    it('should setup logger', () => {
-      const testApp = new UserApp()
-      expect(testApp.logger).toBeDefined()
-      expect(testApp.logger.info).toBeDefined()
-    })
-
-    it('should setup metrics', () => {
-      const testApp = new UserApp()
-      expect(testApp.register).toBeDefined()
-      expect(testApp.httpRequestsTotal).toBeDefined()
-      expect(testApp.httpRequestDuration).toBeDefined()
-    })
-
-    it('should handle server stop', async () => {
-      const testApp = new UserApp()
-      testApp.mongoClient = { close: jest.fn() }
-      testApp.server = { close: jest.fn() }
-
-      await testApp.stop()
-
-      expect(testApp.mongoClient.close).toHaveBeenCalled()
-      expect(testApp.server.close).toHaveBeenCalled()
-    })
-  })
-
-  describe('Error handling', () => {
-    it('should handle database errors in registration', async () => {
-      // Mock database error
-      app.db.collection().insertOne.mockRejectedValueOnce(new Error('Database error'))
-
-      const userData = {
-        name: 'John Doe',
-        email: 'john@example.com'
-      }
-
-      const response = await request(server)
-        .post('/register')
-        .send(userData)
-        .expect(500)
-
-      expect(response.body).toHaveProperty('error', 'Registration failed')
-    })
-
-    it('should handle database errors in users fetch', async () => {
-      // Mock database error
-      app.db.collection().find().toArray.mockRejectedValueOnce(new Error('Database error'))
-
+    it('should handle database unavailable for users list', async () => {
+      app.dbConnected = false
       const response = await request(server)
         .get('/users')
-        .expect(500)
+        .set('Accept', 'application/json')
+        .expect(503)
+      expect(response.body).toHaveProperty('error', 'Database unavailable. Please try again later.')
+    })
 
-      expect(response.body).toHaveProperty('error', 'Failed to fetch users')
+    it('should render users HTML page', async () => {
+      app.dbConnected = true
+      const response = await request(server)
+        .get('/users')
+        .set('Accept', 'text/html')
+        .expect(200)
+      expect(response.text).toContain('Users Management')
+    })
+
+    it('should start server on specified port', async () => {
+      const testApp = new UserApp()
+      const mockServer = { close: jest.fn() }
+      testApp.app.listen = jest.fn().mockImplementation((port, callback) => {
+        callback()
+        return mockServer
+      })
+      
+      const server = await testApp.start()
+      expect(server).toBe(mockServer)
+      expect(testApp.app.listen).toHaveBeenCalledWith(expect.anything(), expect.any(Function))
+    })
+
+    it('should stop server and close connections', async () => {
+      const testApp = new UserApp()
+      const mockServer = { close: jest.fn() }
+      const mockClient = { close: jest.fn() }
+      
+      testApp.server = mockServer
+      testApp.mongoClient = mockClient
+      testApp.healthCheckInterval = 123
+      
+      await testApp.stop()
+      
+      expect(mockServer.close).toHaveBeenCalled()
+      expect(mockClient.close).toHaveBeenCalled()
+    })
+  })
+
+  describe('Error Handling', () => {
+    it('should handle malformed JSON in POST requests', async () => {
+      const response = await request(server)
+        .post('/register')
+        .set('Content-Type', 'application/json')
+        .send('invalid json')
+        .expect(400)
+    })
+
+    it('should handle database errors gracefully', async () => {
+      app.dbConnected = true
+      app.db = {
+        collection: () => ({
+          insertOne: jest.fn().mockRejectedValue(new Error('Database error'))
+        })
+      }
+      
+      const response = await request(server)
+        .post('/register')
+        .send({ name: 'Test', email: 'test@example.com' })
+        .expect(500)
+      expect(response.body).toHaveProperty('error', 'Registration failed')
     })
   })
 })

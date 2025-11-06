@@ -5,6 +5,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
+import org.springframework.test.context.TestPropertySource;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -12,6 +15,17 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
+@ComponentScan(
+    basePackages = "com.example.userapp",
+    excludeFilters = {
+        @ComponentScan.Filter(type = FilterType.REGEX, pattern = "com.example.userapp.controller.*"),
+        @ComponentScan.Filter(type = FilterType.REGEX, pattern = "com.example.userapp.config.ObservabilityConfig"),
+        @ComponentScan.Filter(type = FilterType.REGEX, pattern = "com.example.userapp.service.*")
+    }
+)
+@TestPropertySource(properties = {
+    "spring.datasource.hikari.initialization-fail-timeout=0"
+})
 class UserRepositoryTest {
 
     @Autowired

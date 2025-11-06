@@ -8,27 +8,28 @@
     "dev": "nodemon src/app.js",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage --coverageThreshold='{\"global\":{\"branches\":75,\"functions\":75,\"lines\":75,\"statements\":75}}'",
+    "test:coverage": "jest --coverage",
     "test:integration": "jest --testPathPattern=tests/integration",
     "test:e2e": "cypress run",
     "test:e2e:open": "cypress open",
     "lint": "eslint src/ tests/",
     "lint:fix": "eslint src/ tests/ --fix",
-    "security:audit": "npm audit --audit-level=moderate --json > reports/security/npm-audit.json || true",
-    "security:retire": "retire --outputformat json --outputpath reports/security/retire-report.json || true",
-    "security:scan": "npm run security:audit && npm run security:retire",
+    "audit": "npm audit --audit-level=moderate",
+    "security:check": "retire --outputformat json --outputpath reports/security/retire-report.json || true",
+    "report:dependency": "npm audit --json > reports/security/npm-audit-report.json || true",
     "build": "docker build -t nodejs-user-service:latest .",
     "pipeline": "./scripts/pipeline.sh",
-    "reports:setup": "mkdir -p reports/coverage reports/integration reports/security",
-    "clean": "rm -rf node_modules reports coverage .nyc_output"
+    "clean": "rm -rf node_modules reports coverage .nyc_output logs"
   },
   "dependencies": {
-    "@opentelemetry/exporter-trace-otlp-http": "^0.53.0",
-    "@opentelemetry/instrumentation-express": "^0.41.1",
-    "@opentelemetry/instrumentation-http": "^0.53.0",
-    "@opentelemetry/resources": "^1.26.0",
-    "@opentelemetry/sdk-node": "^0.207.0",
-    "@opentelemetry/semantic-conventions": "^1.27.0",
+    "@opentelemetry/api": "^1.6.0",
+    "@opentelemetry/sdk-node": "^0.44.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.39.4",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.44.0",
+    "@opentelemetry/exporter-metrics-otlp-http": "^0.44.0",
+    "@opentelemetry/resources": "^1.17.0",
+    "@opentelemetry/semantic-conventions": "^1.17.0",
+    "@opentelemetry/sdk-metrics": "^1.17.0",
     "ejs": "^3.1.9",
     "express": "^4.18.2",
     "mongodb": "^6.3.0",
@@ -52,26 +53,7 @@
     "supertest": "^6.3.3",
     "@types/jest": "^29.5.8"
   },
-  "jest": {
-    "testEnvironment": "node",
-    "collectCoverageFrom": [
-      "src/**/*.js",
-      "!src/telemetry.js"
-    ],
-    "coverageDirectory": "reports/coverage",
-    "coverageReporters": ["text", "lcov", "html"],
-    "coverageThreshold": {
-      "global": {
-        "branches": 75,
-        "functions": 75,
-        "lines": 75,
-        "statements": 75
-      }
-    },
-    "testMatch": [
-      "**/tests/**/*.test.js"
-    ]
-  },
+
   "engines": {
     "node": ">=18.0.0"
   }

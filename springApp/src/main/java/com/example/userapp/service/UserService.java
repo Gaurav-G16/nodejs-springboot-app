@@ -2,6 +2,8 @@ package com.example.userapp.service;
 
 import com.example.userapp.entity.User;
 import com.example.userapp.repository.UserRepository;
+import com.example.userapp.config.DatabaseAvailability;
+import com.example.userapp.exception.DatabaseUnavailableException;
 import io.micrometer.core.instrument.Counter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,24 +18,34 @@ import java.util.Optional;
  * Service class for User operations.
  */
 @Service
-@Transactional
 public class UserService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(UserService.class);
 
     private final UserRepository userRepository;
     private final Counter userRegistrationCounter;
+    private final DatabaseAvailability databaseAvailability;
 
     /**
      * Constructor with dependency injection.
      *
      * @param userRepository the user repository
      * @param userRegistrationCounter the user registration counter
+     * @param databaseAvailability the database availability checker (optional)
      */
     @Autowired
-    public UserService(final UserRepository userRepository, final Counter userRegistrationCounter) {
+    public UserService(final UserRepository userRepository,
+                       final Counter userRegistrationCounter,
+                       @Autowired(required = false) final DatabaseAvailability databaseAvailability) {
         this.userRepository = userRepository;
         this.userRegistrationCounter = userRegistrationCounter;
+        this.databaseAvailability = databaseAvailability;
+    }
+
+    private void ensureDatabaseUp() {
+        if (databaseAvailability != null && !databaseAvailability.isDatabaseUp()) {
+            throw new DatabaseUnavailableException("Database is currently unreachable");
+        }
     }
 
     /**
@@ -43,8 +55,11 @@ public class UserService {
      * @return the registered user
      * @throws IllegalArgumentException if user already exists
      */
+    @Transactional
     public User registerUser(final User user) {
         LOGGER.info("Attempting to register user with email: {}", user.getEmail());
+
+        ensureDatabaseUp();
 
         if (userRepository.existsByEmail(user.getEmail())) {
             final String errorMsg = "User with email " + user.getEmail() + " already exists";
@@ -69,9 +84,14 @@ public class UserService {
      *
      * @return list of all users
      */
-    @Transactional(readOnly = true)
     public List<User> getAllUsers() {
         LOGGER.debug("Fetching all users");
+        ensureDatabaseUp();
+        return getAllUsersInternal();
+    }
+
+    @Transactional(readOnly = true)
+    private List<User> getAllUsersInternal() {
         final List<User> users = userRepository.findAll();
         LOGGER.debug("Found {} users", users.size());
         return users;
@@ -83,9 +103,14 @@ public class UserService {
      * @param id the user ID
      * @return Optional containing the user if found
      */
-    @Transactional(readOnly = true)
     public Optional<User> findById(final Long id) {
         LOGGER.debug("Finding user by ID: {}", id);
+        ensureDatabaseUp();
+        return findByIdInternal(id);
+    }
+
+    @Transactional(readOnly = true)
+    private Optional<User> findByIdInternal(final Long id) {
         return userRepository.findById(id);
     }
 
@@ -95,9 +120,14 @@ public class UserService {
      * @param email the email address
      * @return Optional containing the user if found
      */
-    @Transactional(readOnly = true)
     public Optional<User> findByEmail(final String email) {
         LOGGER.debug("Finding user by email: {}", email);
+        ensureDatabaseUp();
+        return findByEmailInternal(email);
+    }
+
+    @Transactional(readOnly = true)
+    private Optional<User> findByEmailInternal(final String email) {
         return userRepository.findByEmail(email);
     }
 
@@ -106,8 +136,13 @@ public class UserService {
      *
      * @return total number of users
      */
-    @Transactional(readOnly = true)
     public long getTotalUserCount() {
+        ensureDatabaseUp();
+        return getTotalUserCountInternal();
+    }
+
+    @Transactional(readOnly = true)
+    private long getTotalUserCountInternal() {
         final long count = userRepository.countTotalUsers();
         LOGGER.debug("Total user count: {}", count);
         return count;
@@ -119,8 +154,11 @@ public class UserService {
      * @param id the user ID to delete
      * @return true if user was deleted, false if not found
      */
+    @Transactional
     public boolean deleteUser(final Long id) {
         LOGGER.info("Attempting to delete user with ID: {}", id);
+        ensureDatabaseUp();
+
         if (userRepository.existsById(id)) {
             userRepository.deleteById(id);
             LOGGER.info("Successfully deleted user with ID: {}", id);

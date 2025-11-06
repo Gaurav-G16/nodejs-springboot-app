@@ -34,3 +34,6 @@ mvn package -DskipTests
 
 echo "🎉 Pipeline completed successfully!"
 echo "📊 Coverage threshold: 80% (configurable via properties)"
+
+
+# mvn spring-boot:build-image -Dspring-boot.build-image.publish=true
