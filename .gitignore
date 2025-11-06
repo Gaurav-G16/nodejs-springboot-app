@@ -1,0 +1,40 @@
+# Build outputs
+build-reports/
+reports/
+target/
+dist/
+build/
+
+# Dependencies
+node_modules/
+.npm/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Docker
+.docker/
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/

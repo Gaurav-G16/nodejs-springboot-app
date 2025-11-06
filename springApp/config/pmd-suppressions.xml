@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suppressions xmlns="https://pmd.github.io/pmd/pmd-suppressions_1_0_0.xsd">
+    <!-- Spring Boot Application class -->
+    <suppress files=".*UserAppApplication\.java" checks="UseUtilityClass"/>
+    
+    <!-- Configuration classes -->
+    <suppress files=".*ObservabilityConfig\.java" checks="AtLeastOneConstructor"/>
+    
+    <!-- Entity classes -->
+    <suppress files=".*User\.java" checks="ShortClassName,DataClass,ShortVariable"/>
+    
+    <!-- Controller method parameters -->
+    <suppress files=".*Controller\.java" checks="MethodArgumentCouldBeFinal"/>
+    
+    <!-- Service and Controller logging -->
+    <suppress files=".*Service\.java,.*Controller\.java" checks="GuardLogStatement"/>
+    
+    <!-- Metrics controller complexity -->
+    <suppress files=".*MetricsController\.java" checks="LocalVariableCouldBeFinal,LawOfDemeter,LongVariable,AvoidDuplicateLiterals"/>
+    
+    <!-- Common patterns -->
+    <suppress files=".*" checks="OnlyOneReturn,ShortVariable,AvoidCatchingGenericException,AvoidThrowingRawExceptionTypes"/>
+</suppressions>
